@@ -4,30 +4,28 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   let client;
   try {
-    // 1. 確保有抓到 Vercel 發放的密碼
-    if (!process.env.REDIS_URL) {
-      return NextResponse.json({ error: '找不到資料庫密碼' }, { status: 500 });
+    // 【關鍵修復】同時去抓 STORAGE_URL 或 REDIS_URL，防堵 Vercel 改名
+    const redisUrl = process.env.STORAGE_URL || process.env.REDIS_URL || process.env.KV_URL;
+    
+    if (!redisUrl) {
+      return NextResponse.json({ error: '找不到資料庫密碼，請確認 Vercel 的 Environment Variables 設定！' }, { status: 500 });
     }
 
-    // 2. 每次呼叫 API 時，建立新連線（開門）
-    client = createClient({ url: process.env.REDIS_URL });
+    client = createClient({ url: redisUrl });
     await client.connect();
 
     const body = await req.json();
     const { action, payload } = body;
     let responseData: any = {};
 
-    // 讀取庫存
     if (action === 'getPrizes') {
       const data = await client.get('ngaayho_prizes');
       responseData = { prizes: data ? JSON.parse(data) : [] };
     } 
-    // 更新庫存
     else if (action === 'setPrizes') {
       await client.set('ngaayho_prizes', JSON.stringify(payload));
       responseData = { success: true };
     } 
-    // 生成條碼
     else if (action === 'generateToken') {
       const data = await client.get('ngaayho_tokens');
       const tokens = data ? JSON.parse(data) : [];
@@ -35,14 +33,12 @@ export async function POST(req: Request) {
       await client.set('ngaayho_tokens', JSON.stringify(tokens));
       responseData = { success: true };
     } 
-    // 檢查條碼
     else if (action === 'checkToken') {
       const data = await client.get('ngaayho_tokens');
       const tokens = data ? JSON.parse(data) : [];
       const target = tokens.find((t: any) => t.token === payload);
       responseData = { valid: target && !target.used };
     } 
-    // 客人抽獎
     else if (action === 'spin') {
       const { tokenStr, userEmail } = payload;
       const tokensData = await client.get('ngaayho_tokens');
@@ -87,20 +83,16 @@ export async function POST(req: Request) {
       responseData = { error: '未知動作' };
     }
 
-    // 3. 執行完畢，安全關門！！！ (避免 Vercel 系統卡死的關鍵)
+    // 確實關閉連線，釋放資源
     await client.quit();
-
+    
     if (responseData.error) {
       return NextResponse.json(responseData, { status: 400 });
     }
     return NextResponse.json(responseData);
 
   } catch (error: any) {
-    console.error(error);
-    // 發生錯誤時也要強制關門
-    if (client && client.isOpen) {
-      await client.quit();
-    }
+    if (client && client.isOpen) await client.quit();
     return NextResponse.json({ error: error.message || '伺服器連線錯誤' }, { status: 500 });
   }
 }
