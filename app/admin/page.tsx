@@ -1,127 +1,113 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Settings, Save, QrCode, Gift, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-const defaultPrizes = [
-  { id: '1', name: '手作陶珠・原味經典款', type: 'physical', count: 10, total: 10 },
-  { id: '2', name: '萬聖限定・木雕貓頭鷹', type: 'physical', count: 5, total: 5 },
-  { id: '3', name: '植染文創・手作襪', type: 'physical', count: 10, total: 10 },
-  { id: '4', name: '全館 300 元折價券 (分3張100)', type: 'coupon', count: 3, total: 3, terms: ['單筆結帳限用一張(100元)','不可找零或兌換現金'] },
-  { id: '5', name: '單筆消費 50 元折價券', type: 'coupon', count: 10, total: 10, terms: ['滿500元方可使用','不與其他優惠併用'] },
-  { id: '6', name: '單筆消費 100 元折價券', type: 'coupon', count: 6, total: 6, terms: ['滿800元方可使用','不與其他優惠併用'] },
-  { id: '7', name: '全館 9 折優惠券', type: 'coupon', count: 20, total: 20, terms: ['特價商品除外'] },
-  { id: '8', name: '全館 8 折優惠券', type: 'coupon', count: 10, total: 10, terms: ['特價商品除外'] },
-  { id: '9', name: '萬聖紀念貼紙', type: 'physical', count: 20, total: 20 },
+const MY_PRIZES = [
+  { id: '1', name: '明信片 1 張', defaultCount: 30, type: 'physical' },
+  { id: '2', name: '明信片 2 張', defaultCount: 20, type: 'physical' },
+  { id: '3', name: '50元折價券', defaultCount: 15, type: 'coupon' },
+  { id: '4', name: '100元折價券', defaultCount: 10, type: 'coupon' },
+  { id: '5', name: '9折優惠券', defaultCount: 10, type: 'coupon' },
+  { id: '6', name: '8折優惠券', defaultCount: 5, type: 'coupon' },
+  { id: '7', name: '300元折價券', defaultCount: 3, type: 'coupon' },
+  { id: '8', name: '品牌 IP 毛巾', defaultCount: 1, type: 'physical' },
 ];
 
-export default function AdminDashboard() {
-  const [prizes, setPrizes] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+export default function AdminPage() {
+  const [prizes, setPrizes] = useState(MY_PRIZES.map(p => ({ ...p, count: p.defaultCount })));
   const [qrToken, setQrToken] = useState('');
-  const [qrUrl, setQrUrl] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // 進入後台時，立刻從雲端讀取目前庫存
   useEffect(() => {
-    fetch('/api/db', { method: 'POST', body: JSON.stringify({ action: 'getPrizes' }) })
-      .then(res => res.json())
-      .then(data => {
-        if (data.prizes && data.prizes.length > 0) {
-          setPrizes(data.prizes);
-        } else {
-          setPrizes(defaultPrizes);
-        }
-        setIsLoading(false);
-      });
+    fetch('/api/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getPrizes' })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.prizes && data.prizes.length > 0) setPrizes(data.prizes);
+    });
   }, []);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await fetch('/api/db', { method: 'POST', body: JSON.stringify({ action: 'setPrizes', payload: prizes }) });
-    alert('雲端庫存已成功更新！客人手機現在會同步最新機率！');
-    setIsSaving(false);
-  };
-
-  const generateSingleUseQR = async () => {
-    const newToken = Math.random().toString(36).substring(2, 15);
-    const baseUrl = window.location.origin;
-    const url = `${baseUrl}?token=${newToken}`;
-    
-    // 將權限寫入雲端
-    await fetch('/api/db', { 
-      method: 'POST', 
-      body: JSON.stringify({ action: 'generateToken', payload: { token: newToken, used: false } }) 
+  const saveToCloud = async () => {
+    setLoading(true);
+    await fetch('/api/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setPrizes', payload: prizes })
     });
-
-    setQrToken(newToken);
-    setQrUrl(url);
+    alert('雲端庫存已更新！');
+    setLoading(false);
   };
 
-  if (isLoading) return <div className="p-10 text-center font-bold">連線雲端資料庫中...</div>;
+  const resetToDefaults = async () => {
+    if(confirm('確定要載入市集最新獎項嗎？這會洗掉雲端舊紀錄。')) {
+      setLoading(true);
+      const resetPrizes = MY_PRIZES.map(p => ({ ...p, count: p.defaultCount }));
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'setPrizes', payload: resetPrizes })
+      });
+      setPrizes(resetPrizes);
+      alert('已成功載入您的市集獎項！');
+      setLoading(false);
+    }
+  };
+
+  const generateQR = async () => {
+    const token = Math.random().toString(36).substring(2, 10);
+    await fetch('/api/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generateToken', payload: { token, used: false } })
+    });
+    setQrToken(`https://gachapon-web.vercel.app/?token=${token}`);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <header className="flex items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div>
-            <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-              <Settings className="w-7 h-7 text-amber-500" /> 原味台南・雲端管理後台
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">跨設備即時同步版本</p>
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-              <Gift className="w-5 h-5 text-emerald-500" /> 獎項庫存即時控管
-            </h2>
-            <div className="space-y-3">
-              {prizes.map((prize, idx) => (
-                <div key={prize.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="font-bold text-slate-700">{prize.name}</div>
-                  <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                    <span className="text-xs text-slate-500">剩餘數量：</span>
-                    <input
-                      type="number"
-                      value={prize.count}
-                      onChange={(e) => {
-                        const newPrizes = [...prizes];
-                        newPrizes[idx].count = parseInt(e.target.value) || 0;
-                        setPrizes(newPrizes);
-                      }}
-                      className="w-20 px-2 py-1 border border-slate-300 rounded-md text-center font-bold"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button onClick={handleSave} disabled={isSaving} className="w-full mt-6 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition">
-              {isSaving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              {isSaving ? '同步至雲端中...' : '儲存庫存至雲端'}
-            </button>
-          </div>
-
-          <div className="bg-slate-900 p-6 rounded-2xl shadow-lg text-white flex flex-col items-center">
-            <h2 className="text-lg font-bold flex items-center gap-2 mb-2 text-amber-400">
-              <QrCode className="w-5 h-5" /> 客人掃碼抽獎區
-            </h2>
-            <p className="text-xs text-slate-400 mb-6 text-center">請點擊下方按鈕，讓客人用他的手機掃描即可抽獎</p>
-            
-            <button onClick={generateSingleUseQR} className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-xl shadow-lg transition mb-6">
-              生成單次抽獎 QR 碼
-            </button>
-
-            {qrUrl && (
-              <div className="bg-white p-4 rounded-2xl flex flex-col items-center animate-in zoom-in duration-300">
-                <QRCodeSVG value={qrUrl} size={200} level="H" includeMargin className="rounded-xl" />
-                <p className="text-slate-900 font-bold text-sm mt-3">請客人掃描此條碼</p>
-                <span className="text-[10px] text-rose-500 mt-1 font-bold">※ 掃描一次後自動失效，防止轉傳</span>
-              </div>
-            )}
-          </div>
+    <div className="flex h-screen bg-gray-50">
+      <div className="w-2/3 p-8 overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">原味台南文創坊 - 後台管理</h1>
+          <button onClick={resetToDefaults} className="bg-red-500 text-white px-4 py-2 rounded font-bold hover:bg-red-600">
+            ⚠️ 載入最新市集獎項
+          </button>
         </div>
+        <div className="space-y-4 mb-6">
+          {prizes.map((prize, idx) => (
+            <div key={prize.id} className="flex justify-between items-center bg-white p-4 rounded shadow">
+              <span className="font-medium text-gray-700">{prize.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm">剩餘數量 :</span>
+                <input 
+                  type="number" 
+                  value={prize.count}
+                  onChange={(e) => {
+                    const newPrizes = [...prizes];
+                    newPrizes[idx].count = parseInt(e.target.value) || 0;
+                    setPrizes(newPrizes);
+                  }}
+                  className="w-20 border rounded p-1 text-center font-bold text-gray-700"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={saveToCloud} disabled={loading} className="w-full bg-green-500 text-white py-3 rounded-lg font-bold">
+          {loading ? '儲存中...' : '儲存庫存至雲端'}
+        </button>
+      </div>
+      <div className="w-1/3 bg-gray-900 text-white p-8 flex flex-col items-center justify-center">
+        <h2 className="text-xl font-bold text-yellow-400 mb-2">生成單次抽獎 QR 碼</h2>
+        <button onClick={generateQR} className="w-full bg-yellow-500 text-black py-3 rounded-lg font-bold mb-8">
+          產生 QR Code
+        </button>
+        {qrToken && (
+          <div className="bg-white p-4 rounded-lg flex flex-col items-center">
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrToken)}`} alt="QR Code" />
+          </div>
+        )}
       </div>
     </div>
   );

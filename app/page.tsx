@@ -1,125 +1,148 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import confetti from 'canvas-confetti';
-import { Gift, Sparkles, CheckCircle2, AlertTriangle, ArrowRight, Camera } from 'lucide-react';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
-export default function ConsumerGachapon() {
-  const [tokenValid, setTokenValid] = useState<boolean | null>(null);
-  const [tokenStr, setTokenStr] = useState('');
-  const [userEmail, setUserEmail] = useState('');
+function GachaponContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token');
+  
+  const [email, setEmail] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isSpinning, setIsSpinning] = useState(false);
-  const [showResult, setShowResult] = useState(false);
-  const [wonPrize, setWonPrize] = useState<any>(null);
+  const [spinning, setSpinning] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      if (!token) {
-        setTokenValid(false);
-        return;
-      }
-      setTokenStr(token);
-
-      // 連線雲端檢查 QR Code 是否有效
-      fetch('/api/db', { method: 'POST', body: JSON.stringify({ action: 'checkToken', payload: token }) })
-        .then(res => res.json())
-        .then(data => setTokenValid(data.valid));
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      setError('請輸入有效的 Gmail 信箱！');
+      return;
     }
-  }, []);
-
-  const spinGachapon = async () => {
-    if (isSpinning || showResult) return;
-    setIsSpinning(true);
-
-    const res = await fetch('/api/db', { 
-      method: 'POST', 
-      body: JSON.stringify({ action: 'spin', payload: { tokenStr, userEmail } }) 
-    });
-    const data = await res.json();
-
-    setTimeout(() => {
-      setIsSpinning(false);
-      if (data.error) {
-        alert(data.error);
-        return;
-      }
-      setWonPrize(data.wonPrize);
-      setShowResult(true);
-      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
-    }, 2000);
+    setError('');
+    setIsLoggedIn(true);
   };
 
-  if (tokenValid === null) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-amber-400 font-bold">連線雲端讀取機率中...</div>;
+  const handleSpin = async () => {
+    if (!token) {
+      setError('請透過攤位生成的 QR Code 掃描進入！');
+      return;
+    }
+    setSpinning(true);
+    setError('');
+    
+    try {
+      const res = await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'spin', payload: { tokenStr: token, userEmail: email } })
+      });
+      const data = await res.json();
+      
+      if (data.error) {
+        setError(data.error);
+        setSpinning(false);
+        return;
+      }
 
-  if (tokenValid === false) {
+      setTimeout(() => {
+        setResult(data.wonPrize);
+        setSpinning(false);
+      }, 2000);
+    } catch (err) {
+      setError('連線失敗，請重試');
+      setSpinning(false);
+    }
+  };
+
+  // 根據獎項動態顯示規則
+  const renderRules = (prizeName: string) => {
+    let threshold = '500';
+    if (prizeName.includes('100元') || prizeName.includes('300元') || prizeName.includes('折')) {
+      threshold = '1000';
+    }
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center">
-        <div className="bg-slate-900 border border-rose-500/30 p-8 rounded-2xl max-w-sm w-full">
-          <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">QR Code 無效或已兌換</h2>
-          <p className="text-sm text-slate-400">此條碼已被使用。請向攤位工作人員索取新的 QR Code。</p>
+      <div className="bg-gray-100 p-4 rounded text-left mt-4 text-xs text-gray-700 space-y-1">
+        <p className="font-bold text-gray-900 mb-2">⚠️ 優惠券使用規則：</p>
+        <p>1. 單筆消費滿 {threshold} 元可使用一張，以此類推。</p>
+        <p>2. 本優惠券可於品牌實體櫃位、攤位使用。</p>
+        <p>3. 本優惠券僅可作為消費折抵使用，不可轉換現金。</p>
+        <p>4. 嚴禁轉售本優惠券。</p>
+        <p>5. 本優惠有效期限至116.12.31止。</p>
+        <p>6. 品牌保有調整優惠券使用規則之權益。</p>
+      </div>
+    );
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">原味台南文創坊</h1>
+          <p className="text-gray-500 mb-6">請驗證您的 Gmail 以進行抽獎</p>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="email"
+              required
+              placeholder="請輸入您的 @gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border p-3 rounded text-black"
+            />
+            {error && <p className="text-red-500 text-sm">{error}</p>}
+            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded hover:bg-blue-700">
+              確認登入
+            </button>
+          </form>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 font-sans bg-gradient-to-b from-slate-950 via-purple-950 to-slate-950 text-amber-100">
-      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur border border-amber-500/20 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center">
-        <header className="mb-6">
-          <span className="text-xs uppercase tracking-widest text-amber-400 font-bold">Nga&apos;ayho Tainan</span>
-          <h1 className="text-2xl font-extrabold text-amber-300 mt-1">原味台南文創坊・萬聖扭蛋</h1>
-        </header>
-
-        {!isLoggedIn ? (
-          <form onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }} className="w-full space-y-4">
-            <div className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 text-left">
-              <label className="text-sm font-bold text-amber-200 block mb-2">請輸入您的稱呼或 Email</label>
-              <input type="text" required value={userEmail} onChange={(e) => setUserEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-3 text-white focus:border-amber-400" placeholder="例如：王小明" />
+    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full text-center">
+        <h1 className="text-3xl font-bold text-orange-600 mb-6">原味台南專屬扭蛋機</h1>
+        
+        {!result ? (
+          <>
+            <div className="w-48 h-48 mx-auto bg-gray-200 rounded-full flex items-center justify-center border-8 border-orange-500 mb-8">
+               {spinning ? <div className="animate-spin text-5xl">🌀</div> : <div className="text-5xl">🎁</div>}
             </div>
-            <button type="submit" className="w-full bg-amber-500 text-slate-950 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2">
-              開始抽獎 <ArrowRight className="w-5 h-5" />
+            {error && <p className="text-red-500 font-bold mb-4">{error}</p>}
+            <button 
+              onClick={handleSpin}
+              disabled={spinning}
+              className={`w-full py-4 rounded-full font-bold text-xl text-white ${spinning ? 'bg-gray-400' : 'bg-orange-500 shadow-lg transform hover:scale-105 transition'}`}
+            >
+              {spinning ? '扭蛋轉動中...' : '開始抽獎！'}
             </button>
-          </form>
+          </>
         ) : (
-          <div className="w-full flex flex-col items-center">
-            <div className={`relative w-48 h-48 rounded-full border-4 ${isSpinning ? 'animate-spin border-amber-400' : 'border-amber-500/40'} bg-gradient-to-tr from-amber-950/40 to-purple-900/40 flex items-center justify-center shadow-inner my-4`}>
-              <Sparkles className={`w-16 h-16 text-amber-400 ${isSpinning ? 'scale-125 transition-transform' : ''}`} />
-            </div>
-
-            {!showResult ? (
-              <button disabled={isSpinning} onClick={spinGachapon} className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-extrabold py-4 rounded-xl shadow-lg disabled:opacity-50 text-lg">
-                {isSpinning ? '雲端開獎中...' : '旋轉扭蛋機'}
-              </button>
-            ) : (
-              <div className="w-full bg-slate-800 border-2 border-amber-400 p-5 rounded-2xl mt-4 text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full bg-rose-600 text-white text-xs font-bold py-1.5 flex justify-center items-center gap-1 animate-pulse">
-                  <Camera className="w-3.5 h-3.5" /> 請務必截圖保存本畫面！
-                </div>
-                
-                <div className="mt-6">
-                  <span className="text-sm text-amber-400 font-bold uppercase">恭喜獲得</span>
-                  <h3 className="text-2xl font-black text-white mt-1 mb-3">{wonPrize?.name}</h3>
-
-                  {wonPrize?.promoCodes && wonPrize.promoCodes.length > 0 && (
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 my-3">
-                      <span className="text-xs text-slate-400 block mb-2">專屬結帳條碼：</span>
-                      <div className="space-y-2">
-                        {wonPrize.promoCodes.map((c: string, idx: number) => (
-                          <div key={idx} className="font-mono text-lg font-bold text-amber-400 tracking-widest">{c}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-sm font-bold text-emerald-400 mt-4">👉 結帳時出示此截圖即可核銷</p>
-                </div>
+          <div className="animate-bounce">
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">恭喜您獲得！</h2>
+            <div className="text-4xl text-red-600 font-extrabold my-4">{result.name}</div>
+            <p className="text-red-500 font-bold animate-pulse my-4 text-xl">⚠️ 請務必截圖保存本畫面！</p>
+            
+            {result.promoCodes && result.promoCodes.length > 0 && (
+              <div className="bg-orange-50 p-4 rounded text-left mt-4 border border-orange-200">
+                <p className="font-bold mb-2 text-gray-800 text-center">您的專屬核銷條碼</p>
+                {result.promoCodes.map((c: string) => (
+                  <div key={c} className="font-mono bg-white p-3 border mb-2 text-center text-lg font-bold text-red-600 shadow-sm">{c}</div>
+                ))}
               </div>
             )}
+            {result.type === 'coupon' && renderRules(result.name)}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="text-white text-center mt-20">載入中...</div>}>
+      <GachaponContent />
+    </Suspense>
   );
 }
