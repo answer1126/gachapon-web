@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   let client;
   try {
-    // 【關鍵修復】同時去抓 STORAGE_URL 或 REDIS_URL，防堵 Vercel 改名
+    // 【關鍵修復】同時去抓 STORAGE_URL 或 REDIS_URL，防堵 Vercel 亂改名
     const redisUrl = process.env.STORAGE_URL || process.env.REDIS_URL || process.env.KV_URL;
     
     if (!redisUrl) {
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       responseData = { error: '未知動作' };
     }
 
-    // 確實關閉連線，釋放資源
+    // 確實關閉連線，釋放資源 (避免卡死轉圈圈的關鍵！)
     await client.quit();
     
     if (responseData.error) {
