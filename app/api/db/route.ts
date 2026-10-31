@@ -14,53 +14,60 @@ export async function POST(req: Request) {
     const { action, payload } = body;
     let responseData: any = {};
 
-    // 升級至 v4 確保全新連線
+    // 升級至 v5 確保全新乾淨的資料庫
     if (action === 'getPrizes') {
-      const data = await client.get('ngaayho_prizes_v4');
+      const data = await client.get('ngaayho_prizes_v5');
       responseData = { prizes: data ? JSON.parse(data) : [] };
     } 
     else if (action === 'setPrizes') {
-      await client.set('ngaayho_prizes_v4', JSON.stringify(payload));
+      await client.set('ngaayho_prizes_v5', JSON.stringify(payload));
       responseData = { success: true };
     } 
     else if (action === 'generateToken') {
-      const data = await client.get('ngaayho_tokens_v4');
+      const data = await client.get('ngaayho_tokens_v5');
       const tokens = data ? JSON.parse(data) : [];
       tokens.push(payload);
-      await client.set('ngaayho_tokens_v4', JSON.stringify(tokens));
+      await client.set('ngaayho_tokens_v5', JSON.stringify(tokens));
       responseData = { success: true };
     } 
+    else if (action === 'getTheme') {
+      const theme = await client.get('ngaayho_theme_v5');
+      responseData = { theme: theme || 'halloween' };
+    }
+    else if (action === 'setTheme') {
+      await client.set('ngaayho_theme_v5', payload.theme);
+      responseData = { success: true };
+    }
     else if (action === 'spin') {
       const { tokenStr, userEmail } = payload;
-      const tokensData = await client.get('ngaayho_tokens_v4');
+      const tokensData = await client.get('ngaayho_tokens_v5');
       const tokens = tokensData ? JSON.parse(tokensData) : [];
       const tokenIdx = tokens.findIndex((t: any) => t.token === tokenStr);
       
       if (tokenIdx === -1 || tokens[tokenIdx].used) {
         responseData = { error: '此 QR Code 已失效' };
       } else {
-        const prizesData = await client.get('ngaayho_prizes_v4');
+        const prizesData = await client.get('ngaayho_prizes_v5');
         const prizes = prizesData ? JSON.parse(prizesData) : [];
         const available = prizes.filter((p: any) => p.count > 0);
         
+        // ✅ 修正：預設備案精準對齊真實獎項「明信片 1 張 (id:1)」，解決扣不到庫存的問題
         const selected = available.length > 0 
           ? available[Math.floor(Math.random() * available.length)]
-          : { id: 'default', name: '精美明信片', type: 'physical' };
+          : { id: '1', name: '明信片 1 張', type: 'physical' };
 
         // 自動扣除庫存
-        if (selected.id !== 'default') {
+        if (selected.id) {
           const updatedPrizes = prizes.map((p: any) => 
             p.id === selected.id ? { ...p, count: Math.max(0, p.count - 1) } : p
           );
-          await client.set('ngaayho_prizes_v4', JSON.stringify(updatedPrizes));
+          await client.set('ngaayho_prizes_v5', JSON.stringify(updatedPrizes));
         }
 
-        // 註記條碼已使用
         tokens[tokenIdx].used = true;
         tokens[tokenIdx].usedBy = userEmail;
-        await client.set('ngaayho_tokens_v4', JSON.stringify(tokens));
+        await client.set('ngaayho_tokens_v5', JSON.stringify(tokens));
 
-        // 產生專屬優惠碼邏輯
         let promoCodes: string[] = [];
         if (selected.name.includes('300元')) {
           promoCodes = [
@@ -72,7 +79,6 @@ export async function POST(req: Request) {
           promoCodes = [`NGAAYHO-${Math.random().toString(36).substring(2, 8).toUpperCase()}`];
         }
 
-        // 🔔 實體與折價券全面寄信邏輯
         try {
           const promoText = promoCodes.length > 0 
             ? `\n專屬優惠碼:\n${promoCodes.join('\n')}` 
@@ -88,7 +94,7 @@ export async function POST(req: Request) {
             })
           });
         } catch (e) {
-          console.error('寄信失敗，但不影響客人畫面', e);
+          console.error('寄信失敗', e);
         }
 
         responseData = { wonPrize: { ...selected, promoCodes } };

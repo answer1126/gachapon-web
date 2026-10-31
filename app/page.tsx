@@ -1,6 +1,44 @@
 'use client';
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+
+// ==========================================
+// 🎨 八大節慶主題視覺設定庫
+// ==========================================
+const THEME_STYLES: Record<string, any> = {
+  halloween: {
+    bg: 'bg-gray-900', cardTitle: 'text-orange-600', btn: 'bg-orange-500 hover:bg-orange-600',
+    border: 'border-orange-500', title: '🎃 萬聖扭蛋機 🎃', emoji: '👻'
+  },
+  christmas: {
+    bg: 'bg-green-900', cardTitle: 'text-red-600', btn: 'bg-red-500 hover:bg-red-600',
+    border: 'border-red-500', title: '🎄 聖誕扭蛋機 🎅', emoji: '🎁'
+  },
+  lunar: {
+    bg: 'bg-red-800', cardTitle: 'text-red-700', btn: 'bg-yellow-500 hover:bg-yellow-400 text-red-900',
+    border: 'border-yellow-400', title: '🧨 新春扭蛋機 🧧', emoji: '💰'
+  },
+  dragon: {
+    bg: 'bg-emerald-900', cardTitle: 'text-emerald-700', btn: 'bg-yellow-500 hover:bg-yellow-400 text-emerald-900',
+    border: 'border-yellow-400', title: '🐉 端午扭蛋機 🥟', emoji: '🛶'
+  },
+  midautumn: {
+    bg: 'bg-indigo-950', cardTitle: 'text-indigo-800', btn: 'bg-yellow-400 hover:bg-yellow-300 text-indigo-900',
+    border: 'border-yellow-400', title: '🌕 中秋扭蛋機 🐰', emoji: '🥮'
+  },
+  mother: {
+    bg: 'bg-pink-100', cardTitle: 'text-pink-600', btn: 'bg-pink-500 hover:bg-pink-600 text-white',
+    border: 'border-pink-400', title: '🌸 母親節專屬 👩‍👧', emoji: '💐'
+  },
+  father: {
+    bg: 'bg-sky-900', cardTitle: 'text-sky-700', btn: 'bg-sky-600 hover:bg-sky-500 text-white',
+    border: 'border-sky-400', title: '👔 父親節專屬 👨‍👦', emoji: '💪'
+  },
+  valentine: {
+    bg: 'bg-rose-950', cardTitle: 'text-rose-600', btn: 'bg-rose-500 hover:bg-rose-600 text-white',
+    border: 'border-rose-400', title: '💖 情人節專屬 🍫', emoji: '🌹'
+  }
+};
 
 function GachaponContent() {
   const searchParams = useSearchParams();
@@ -11,6 +49,20 @@ function GachaponContent() {
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
+  const [currentTheme, setCurrentTheme] = useState('halloween');
+
+  // 初始化時抓取目前後台設定的主題
+  useEffect(() => {
+    fetch('/api/db', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'getTheme' })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.theme && THEME_STYLES[data.theme]) setCurrentTheme(data.theme);
+    });
+  }, []);
+
+  const styles = THEME_STYLES[currentTheme] || THEME_STYLES.halloween;
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +84,7 @@ function GachaponContent() {
     
     try {
       const res = await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'spin', payload: { tokenStr: token, userEmail: email } })
       });
       const data = await res.json();
@@ -43,7 +94,6 @@ function GachaponContent() {
         setSpinning(false);
         return;
       }
-
       setTimeout(() => {
         setResult(data.wonPrize);
         setSpinning(false);
@@ -56,9 +106,7 @@ function GachaponContent() {
 
   const renderRules = (prizeName: string) => {
     let threshold = '500';
-    if (prizeName.includes('100元') || prizeName.includes('300元') || prizeName.includes('折')) {
-      threshold = '1000';
-    }
+    if (prizeName.includes('100元') || prizeName.includes('300元') || prizeName.includes('折')) threshold = '1000';
     return (
       <div className="bg-gray-100 p-3 md:p-4 rounded text-left mt-4 text-xs md:text-sm text-gray-700 space-y-1">
         <p className="font-bold text-gray-900 mb-1 md:mb-2">⚠️ 優惠券使用規則：</p>
@@ -74,17 +122,14 @@ function GachaponContent() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 md:p-8">
-        <div className="bg-white rounded-xl shadow-2xl p-6 md:p-8 max-w-md w-full text-center mx-auto">
+      <div className={`min-h-screen ${styles.bg} flex flex-col items-center justify-center p-4 md:p-8 transition-colors duration-500`}>
+        <div className="bg-white rounded-xl shadow-2xl p-6 md:p-8 max-w-md w-full text-center mx-auto border-t-8 border-blue-500">
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">原味台南文創坊</h1>
           <p className="text-sm md:text-base text-gray-500 mb-6">請驗證您的 Gmail 以進行抽獎</p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input
-              type="email"
-              required
-              placeholder="請輸入您的 @gmail.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="email" required placeholder="請輸入您的 @gmail.com"
+              value={email} onChange={(e) => setEmail(e.target.value)}
               className="w-full border-2 border-gray-300 p-3 md:p-4 rounded text-black text-base md:text-lg focus:border-blue-500 focus:outline-none"
             />
             {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
@@ -98,20 +143,20 @@ function GachaponContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 md:p-8">
+    <div className={`min-h-screen ${styles.bg} flex flex-col items-center justify-center p-4 md:p-8 transition-colors duration-500`}>
       <div className="bg-white rounded-xl shadow-2xl p-6 md:p-8 max-w-md w-full text-center mx-auto">
-        <h1 className="text-2xl md:text-3xl font-bold text-orange-600 mb-6 md:mb-8">原味台南專屬扭蛋機</h1>
+        <h1 className={`text-2xl md:text-3xl font-black ${styles.cardTitle} mb-6 md:mb-8`}>{styles.title}</h1>
         
         {!result ? (
           <>
-            <div className="w-40 h-40 md:w-48 md:h-48 mx-auto bg-gray-200 rounded-full flex items-center justify-center border-8 border-orange-500 mb-6 md:mb-8 transition-all">
-               {spinning ? <div className="animate-spin text-4xl md:text-5xl">🌀</div> : <div className="text-4xl md:text-5xl">🎁</div>}
+            <div className={`w-40 h-40 md:w-48 md:h-48 mx-auto bg-gray-100 rounded-full flex items-center justify-center border-8 ${styles.border} mb-6 md:mb-8 transition-all shadow-inner`}>
+               {spinning ? <div className="animate-spin text-4xl md:text-5xl">🌀</div> : <div className="text-5xl md:text-6xl">{styles.emoji}</div>}
             </div>
             {error && <p className="text-red-500 font-bold mb-4 text-sm md:text-base">{error}</p>}
             <button 
               onClick={handleSpin}
               disabled={spinning}
-              className={`w-full py-4 md:py-5 rounded-full font-bold text-lg md:text-xl text-white ${spinning ? 'bg-gray-400' : 'bg-orange-500 shadow-lg transform hover:scale-105 transition'}`}
+              className={`w-full py-4 md:py-5 rounded-full font-bold text-lg md:text-xl ${spinning ? 'bg-gray-300 text-gray-500' : `${styles.btn} shadow-lg transform hover:scale-105 transition`}`}
             >
               {spinning ? '扭蛋轉動中...' : '開始抽獎！'}
             </button>
